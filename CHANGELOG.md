@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.3
+
+- Set the Wrangler compatibility date to `2026-10-30` because Cloudflare rejected `2026-10-31` as a future date at deployment time.
+
+
 ## 2.0.2
 
 - Fix the Cloudflare Workers v5 SQLite query generic constraint by declaring the stored event row as a `Record<string, SqlStorageValue>`.
