@@ -1,11 +1,17 @@
 # Changelog
 
+## 2.0.0
+
+- Replace manually provisioned D1 and Queues with SQLite-backed Durable Object storage and alarm-based retries.
+- Provision the Durable Object namespace through Wrangler on first deployment.
+- Declare `notify.roshava.app` as a Wrangler Custom Domain.
+- Align deployment with Cloudflare Workers Builds Git integration; remove the separate Cloudflare API-token GitHub deployment path.
+- Reduce initial runtime configuration to two Worker secrets: `TREMENDOUS_WEBHOOK_SECRET` and `GATEWAY_ADMIN_TOKEN`.
+
 ## 1.1.0
 
-- Add one-click GitHub Actions workflow to provision D1 and Queues idempotently, apply migrations, upload Worker secrets, and deploy.
-- Document Cloudflare token permissions, GitHub repository variables/secrets, and secure admin-token generation.
-- Keep custom-domain attachment and Tremendous webhook registration as explicit post-deploy steps.
+- Added GitHub Actions bootstrap workflow for D1/Queues and manual Cloudflare deployment.
 
 ## 1.0.0
 
-- Initial Cloudflare webhook gateway with HMAC verification, D1 persistence, queue processing, optional signed upstream forwarding, admin event listing/replay, and scheduled retention cleanup.
+- Initial webhook gateway with HMAC verification, D1 persistence, queue processing, optional signed upstream forwarding, admin event listing/replay, and scheduled retention cleanup.
