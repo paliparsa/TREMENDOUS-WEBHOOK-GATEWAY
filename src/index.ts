@@ -81,7 +81,7 @@ function adminAuthError(request: Request, env: Env): string | null {
   const expected = env.GATEWAY_ADMIN_TOKEN;
   if (typeof expected !== "string" || expected.length === 0) return "ADMIN_TOKEN_NOT_CONFIGURED";
   const header = request.headers.get("authorization") ?? "";
-  const match = /^Bearer\\s+(.+)$/i.exec(header);
+  const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match) return "MISSING_BEARER_TOKEN";
   // Trim accidental whitespace from dashboard/Cloudflare secret copy-paste.
   return constantTimeEqual(match[1].trim(), expected.trim()) ? null : "INVALID_ADMIN_TOKEN";
