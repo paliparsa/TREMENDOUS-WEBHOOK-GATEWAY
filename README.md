@@ -169,6 +169,10 @@ npm run check
 
 ## Latest changes
 
+### 2.0.3
+
+- Fixed deployment rejection caused by a compatibility date one day ahead of Cloudflare's API date; set `compatibility_date` to `2026-10-30`.
+
 ### 2.0.2
 
 - Fixed the TypeScript build error from Cloudflare Workers v5: SQLite query row types now satisfy `Record<string, SqlStorageValue>` while retaining strict field types.
