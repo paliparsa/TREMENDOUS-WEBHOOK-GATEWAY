@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2
+
+- Fix the Cloudflare Workers v5 SQLite query generic constraint by declaring the stored event row as a `Record<string, SqlStorageValue>`.
+- Keep the row fields strongly typed without using `any` or weakening TypeScript strictness.
+
+
 ## 2.0.1
 
 - Fix npm installation by replacing the unpublished Cloudflare Workers types v4 range with the published v5.20261030.1 release.
