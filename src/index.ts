@@ -1,3 +1,4 @@
+import { adminHtml } from "./admin";
 import { constantTimeEqual, hmacSha256Hex, verifyHmacSha256 } from "./security";
 
 export interface Env {
@@ -139,6 +140,11 @@ async function handleAdmin(request: Request, env: Env): Promise<Response> {
     return callStore(env, `/events?${query.toString()}`);
   }
 
+  const detail = /^\/admin\/events\/([^/]+)$/.exec(url.pathname);
+  if (detail && request.method === "GET") {
+    return callStore(env, "/events/" + encodeURIComponent(decodeURIComponent(detail[1])));
+  }
+
   const match = /^\/admin\/events\/([^/]+)\/replay$/.exec(url.pathname);
   if (match && request.method === "POST") {
     return callStore(env, `/events/${encodeURIComponent(decodeURIComponent(match[1]))}/replay`, {});
@@ -149,6 +155,19 @@ async function handleAdmin(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/admin" || url.pathname === "/admin/") {
+      if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+      return new Response(adminHtml, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+          "x-content-type-options": "nosniff",
+          "referrer-policy": "no-referrer",
+          "x-frame-options": "DENY",
+        },
+      });
+    }
     if (url.pathname === "/healthz" && request.method === "GET") {
       return json({ ok: true, service: "tremendous-webhook-gateway", storage: "durable-object-sqlite" });
     }
@@ -227,6 +246,17 @@ export class WebhookStore {
             limit,
           ).toArray();
       return json({ events: rows, count: rows.length });
+    }
+
+    const detail = /^\/events\/([^/]+)$/.exec(url.pathname);
+    if (detail && request.method === "GET") {
+      const eventUuid = decodeURIComponent(detail[1]);
+      const event = this.sql.exec(
+        "SELECT event_uuid,event_type,resource_type,resource_id,created_utc,received_at,raw_body,processing_status,attempt_count,last_error,forwarded_at FROM webhook_events WHERE event_uuid = ?",
+        eventUuid,
+      ).toArray()[0];
+      if (!event) return json({ error: "EVENT_NOT_FOUND" }, 404);
+      return json({ event });
     }
 
     const replay = /^\/events\/([^/]+)\/replay$/.exec(url.pathname);
