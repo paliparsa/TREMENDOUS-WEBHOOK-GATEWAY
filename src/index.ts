@@ -70,16 +70,26 @@ function store(env: Env): DurableObjectStub {
 }
 
 async function callStore(env: Env, path: string, body?: unknown): Promise<Response> {
+  const startedAt = Date.now();
   try {
-    return await store(env).fetch(new Request(`https://webhook-store.internal${path}`, {
+    const namespace = env.WEBHOOK_STORE;
+    if (!namespace) {
+      console.error("Durable Object binding is missing", { path });
+      return json({ error: "STORE_BINDING_MISSING" }, 503);
+    }
+    const id = namespace.idFromName("tremendous-webhook-events");
+    console.info("Durable Object request dispatched", { path, objectId: id.toString() });
+    const response = await namespace.get(id).fetch(new Request(`https://webhook-store.internal${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: body === undefined ? undefined : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     }));
+    console.info("Durable Object request completed", { path, status: response.status, elapsedMs: Date.now() - startedAt });
+    return response;
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 240) : "UNKNOWN_STORE_ERROR";
-    console.error("Durable Object request failed", { path, detail });
+    console.error("Durable Object request failed", { path, detail, elapsedMs: Date.now() - startedAt });
     return json({ error: "STORE_UNAVAILABLE", detail }, 503);
   }
 }
@@ -197,6 +207,7 @@ export class WebhookStore {
   private readonly sql: SqlStorage;
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: Env) {
+    console.info("WebhookStore constructor started");
     this.sql = ctx.storage.sql;
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS webhook_events (
@@ -215,10 +226,12 @@ export class WebhookStore {
       )
     `);
     this.sql.exec("CREATE INDEX IF NOT EXISTS idx_events_status_received ON webhook_events(processing_status, received_at DESC)");
+    console.info("WebhookStore constructor completed");
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    console.info("WebhookStore fetch started", { path: url.pathname, method: request.method });
     if (url.pathname === "/ingest" && request.method === "POST") {
       const event = await request.json() as {
         eventUuid: string; eventType: string; resourceType: string | null;
