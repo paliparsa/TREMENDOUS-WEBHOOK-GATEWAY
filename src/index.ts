@@ -83,7 +83,6 @@ async function callStore(env: Env, path: string, body?: unknown): Promise<Respon
       method: body === undefined ? "GET" : "POST",
       headers: body === undefined ? undefined : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(10_000),
     }));
     console.info("Durable Object request completed", { path, status: response.status, elapsedMs: Date.now() - startedAt });
     return response;
