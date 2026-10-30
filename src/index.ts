@@ -70,12 +70,18 @@ function store(env: Env): DurableObjectStub {
 }
 
 async function callStore(env: Env, path: string, body?: unknown): Promise<Response> {
-  return store(env).fetch(new Request(`https://webhook-store.internal${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
-  }));
+  try {
+    return await store(env).fetch(new Request(`https://webhook-store.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    }));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 240) : "UNKNOWN_STORE_ERROR";
+    console.error("Durable Object request failed", { path, detail });
+    return json({ error: "STORE_UNAVAILABLE", detail }, 503);
+  }
 }
 
 function adminAuthError(request: Request, env: Env): string | null {
