@@ -26,3 +26,6 @@ dead_letter_queue = "tremendous-webhook-events-dlq"
 
 # Bind notify.roshava.app to this Worker in Cloudflare after the DNS zone is ready.
 # Do not add the custom domain until the Worker is deployed and secrets are configured.
+
+[triggers]
+crons = ["0 4 * * *"]
