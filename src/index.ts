@@ -28,8 +28,6 @@ interface StoredEvent {
   attempt_count: number;
 }
 
-const encoder = new TextEncoder();
-
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -257,7 +255,7 @@ export class WebhookStore {
       `SELECT event_uuid,event_type,resource_type,resource_id,created_utc,received_at,raw_body,
               processing_status,attempt_count
        FROM webhook_events
-       WHERE processing_status IN ('RECEIVED','FAILED')
+       WHERE processing_status IN ('RECEIVED','FAILED','PROCESSING')
        ORDER BY received_at ASC LIMIT 20`,
     ).toArray();
 
