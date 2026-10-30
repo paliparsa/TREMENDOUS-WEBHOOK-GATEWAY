@@ -2,30 +2,23 @@ name = "tremendous-webhook-gateway"
 main = "src/index.ts"
 compatibility_date = "2026-10-31"
 workers_dev = true
+keep_vars = true
 
 [vars]
 APP_ENV = "production"
 MAX_BODY_BYTES = "262144"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "tremendous-webhook-gateway"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
-migrations_dir = "migrations"
+[[durable_objects.bindings]]
+name = "WEBHOOK_STORE"
+class_name = "WebhookStore"
 
-[[queues.producers]]
-binding = "EVENT_QUEUE"
-queue = "tremendous-webhook-events"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WebhookStore"]
 
-[[queues.consumers]]
-queue = "tremendous-webhook-events"
-max_batch_size = 10
-max_batch_timeout = 5
-max_retries = 5
-dead_letter_queue = "tremendous-webhook-events-dlq"
-
-# Bind notify.roshava.app to this Worker in Cloudflare after the DNS zone is ready.
-# Do not add the custom domain until the Worker is deployed and secrets are configured.
+[[routes]]
+pattern = "notify.roshava.app"
+custom_domain = true
 
 [triggers]
 crons = ["0 4 * * *"]
