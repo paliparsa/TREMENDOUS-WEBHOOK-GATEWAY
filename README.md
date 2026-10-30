@@ -169,6 +169,11 @@ npm run check
 
 ## Latest changes
 
+### 2.0.2
+
+- Fixed the TypeScript build error from Cloudflare Workers v5: SQLite query row types now satisfy `Record<string, SqlStorageValue>` while retaining strict field types.
+- No `any` casts or relaxed compiler settings were introduced.
+
 ### 2.0.1
 
 - Fixed the npm `ETARGET` installation failure by updating `@cloudflare/workers-types` to the published `^5.20261030.1` release.
