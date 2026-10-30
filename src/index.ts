@@ -16,7 +16,7 @@ interface TremendousPayload {
   payload?: { resource?: { id?: string; type?: string } };
 }
 
-interface StoredEvent {
+interface StoredEvent extends Record<string, SqlStorageValue> {
   event_uuid: string;
   event_type: string;
   resource_type: string | null;
