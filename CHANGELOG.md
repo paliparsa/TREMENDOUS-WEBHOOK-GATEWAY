@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+
+- Fix npm installation by replacing the unpublished Cloudflare Workers types v4 range with the published v5.20261030.1 release.
+- Close superseded Dependabot pull requests after applying the required dependency fix directly.
+
 ## 2.0.0
 
 - Replace manually provisioned D1 and Queues with SQLite-backed Durable Object storage and alarm-based retries.
