@@ -14,10 +14,7 @@ Cloudflare Worker (notify.roshava.app)
    | verify HMAC against exact raw request body
    | persist UUID with UNIQUE constraint in D1
    v
-Cloudflare Queue
-   | async, retryable delivery
-   v
-Optional upstream endpoint (your own application)
+Cloudflare Queue -> optional signed upstream endpoint
 ```
 
 A separate hostname is a deployment choice, not a way to conceal business activity or bypass provider terms, sanctions, recipient restrictions, or compliance review.
@@ -26,113 +23,92 @@ A separate hostname is a deployment choice, not a way to conceal business activi
 
 - HMAC-SHA256 verification using the exact raw body and Tremendous signature header.
 - UUID-based idempotency and duplicate delivery handling.
-- Durable D1 event store with resource identifiers and processing state.
-- Queue-based asynchronous forwarding; the webhook receiver responds quickly.
-- Signed gateway-to-upstream requests and an idempotency header.
+- Durable D1 event store and Queue-based asynchronous processing.
+- Optional signed forwarding to an upstream endpoint.
 - Admin-only event listing and replay endpoints.
-- Bounded payload size, no-store responses, safe error messages.
-- Scheduled pruning of terminal event records after 90 days.
-- GitHub Actions CI and Cloudflare deploy workflow.
+- Bounded payload size, safe errors, and scheduled pruning.
+- GitHub Actions CI and one-click Cloudflare bootstrap/deploy workflow.
 
 ## Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/healthz` | Basic health check |
+| GET | `/healthz` | Health check |
 | POST | `/webhook` | Tremendous webhook receiver |
-| POST | `/tremendous/webhook` | Alias for receiver |
-| GET | `/admin/events?limit=50&status=FAILED` | List event metadata (Bearer admin token) |
-| POST | `/admin/events/{uuid}/replay` | Requeue an event (Bearer admin token) |
+| POST | `/tremendous/webhook` | Receiver alias |
+| GET | `/admin/events?limit=50&status=FAILED` | List event metadata |
+| POST | `/admin/events/{uuid}/replay` | Replay an event |
 
-The admin event list never returns the raw webhook body. Raw payloads are retained in D1 to support controlled processing/replay and may contain personal data. Restrict D1 access.
+Admin endpoints require `Authorization: Bearer GATEWAY_ADMIN_TOKEN`. The event list does not return raw payloads.
 
-## 1. Cloudflare bootstrap
+## One-time GitHub setup
 
-Prerequisites: Node.js 20+, npm, Wrangler authenticated to the intended Cloudflare account.
+Open **Settings -> Secrets and variables -> Actions** in this repository.
 
-```bash
-npm ci
-npx wrangler d1 create tremendous-webhook-gateway
-npx wrangler queues create tremendous-webhook-events
-npx wrangler queues create tremendous-webhook-events-dlq
+### Repository secrets
+
+Add these four secrets:
+
+1. `CLOUDFLARE_API_TOKEN` — Cloudflare API token.
+2. `TREMENDOUS_WEBHOOK_SECRET` — the webhook `private_key` shown by Tremendous.
+3. `GATEWAY_ADMIN_TOKEN` — a random, private admin bearer token (generate one as described below).
+
+### Repository variable
+
+Add:
+
+- `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account ID.
+
+The Cloudflare API token needs account-level permissions to manage **D1: Edit**, **Queues: Edit**, and **Workers Scripts: Edit** for the intended account. Scope it to that account; do not use your Global API Key.
+
+### Generate the admin token
+
+On Windows PowerShell:
+
+```powershell
+[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
 ```
 
-Copy the D1 `database_id` returned by Wrangler into `wrangler.toml`, replacing `REPLACE_WITH_D1_DATABASE_ID`.
-
-Apply the migration:
-
-```bash
-npx wrangler d1 migrations apply tremendous-webhook-gateway --remote
-```
-
-Set Worker secrets (never commit them):
+Or on macOS/Linux:
 
 ```bash
 openssl rand -hex 32
-npx wrangler secret put TREMENDOUS_WEBHOOK_SECRET
-openssl rand -hex 32
-npx wrangler secret put GATEWAY_ADMIN_TOKEN
 ```
 
-Paste the Tremendous webhook `private_key` as `TREMENDOUS_WEBHOOK_SECRET`. Use a different random value for `GATEWAY_ADMIN_TOKEN`.
+Copy the generated 64-character value into the GitHub secret `GATEWAY_ADMIN_TOKEN`. It is not supplied by Tremendous or Cloudflare. Keep it private; anyone who has it can access admin event operations. To rotate it, replace the GitHub secret and run the workflow again.
 
-Optional upstream forwarding, only after your receiving application has implemented and secured the endpoint:
+### Run bootstrap and deploy
 
-```bash
-npx wrangler secret put UPSTREAM_SECRET
-npx wrangler secret put UPSTREAM_URL
+Go to **Actions -> Bootstrap and deploy Cloudflare Gateway -> Run workflow**.
+
+The workflow will:
+1. Create the D1 database if it does not exist.
+2. Create both Queues if they do not exist.
+3. Apply D1 migrations.
+4. Upload the two Worker secrets.
+5. Deploy the Worker.
+
+It is safe to rerun; resource creation is idempotent. The workflow does not configure a custom domain or register the webhook with Tremendous.
+
+## After the first deploy
+
+In Cloudflare, open the Worker and add the Custom Domain `notify.roshava.app`. Then check:
+
+```text
+https://notify.roshava.app/healthz
 ```
 
-- `UPSTREAM_URL`: exact HTTPS endpoint on your own application.
-- `UPSTREAM_SECRET`: shared secret used to sign the exact forwarded body with HMAC-SHA256.
-- The receiver must verify `X-Tremendous-Gateway-Signature: sha256=<hex>` and deduplicate `Idempotency-Key`.
-
-If upstream settings are absent, events are stored and marked `IGNORED`; they are not forwarded. Configure upstream first, then replay stored events.
-
-## 2. Deploy
-
-```bash
-npm run typecheck
-npm test
-npx wrangler deploy
-```
-
-After deployment, add `notify.roshava.app` as a Worker Custom Domain in Cloudflare. The Worker custom domain must be attached to this Worker; a DNS record alone is insufficient.
-
-Use this Tremendous endpoint URL:
+Once it responds successfully, configure this webhook URL in Tremendous:
 
 ```text
 https://notify.roshava.app/webhook
 ```
 
-The code also accepts `/tremendous/webhook`.
+Tremendous organizations support one webhook endpoint. Check whether an existing webhook is in use before replacing it. Save the displayed webhook `private_key` as the GitHub secret `TREMENDOUS_WEBHOOK_SECRET`, then rerun the workflow so it is uploaded to the Worker.
 
-## 3. Configure Tremendous
+## Optional upstream forwarding
 
-Tremendous organizations support one webhook endpoint. Before saving a new endpoint, inspect the organization's existing webhook configuration so you do not replace an endpoint used by another integration.
-
-Set the endpoint URL in the Tremendous dashboard if your account provides manual configuration. Save the returned webhook private key immediately as the Worker secret `TREMENDOUS_WEBHOOK_SECRET`. Never put it in frontend code, Git, a URL, or a public issue.
-
-Receiving webhook POSTs does not require a Tremendous API key. Creating or managing webhook configuration through Tremendous's API is a separate operation and requires API credentials.
-
-## 4. Admin operations
-
-```bash
-curl -H "Authorization: Bearer $GATEWAY_ADMIN_TOKEN" \
-  "https://notify.roshava.app/admin/events?limit=50"
-
-curl -X POST \
-  -H "Authorization: Bearer $GATEWAY_ADMIN_TOKEN" \
-  "https://notify.roshava.app/admin/events/EVENT_UUID/replay"
-```
-
-The downstream application must also deduplicate using `Idempotency-Key`.
-
-## 5. GitHub Actions deployment
-
-Configure repository secret `CLOUDFLARE_API_TOKEN` with the least permissions needed for this Worker deployment, and repository variable `CLOUDFLARE_ACCOUNT_ID`.
-
-The deploy workflow runs on pushes to `main` and can also be started manually. It deploys code only; D1/Queue creation, secrets, and custom-domain setup are one-time Cloudflare tasks.
+Do not configure upstream until the receiving endpoint in your main application has implemented HMAC verification and `Idempotency-Key` deduplication. Without upstream settings, events are stored but not forwarded.
 
 ## Local development
 
@@ -143,7 +119,7 @@ TREMENDOUS_WEBHOOK_SECRET=local-test-secret
 GATEWAY_ADMIN_TOKEN=local-admin-token
 ```
 
-Then run `npm run dev`. Apply local D1 migrations with:
+Then run `npm install` and `npm run dev`. Apply local migrations with:
 
 ```bash
 npx wrangler d1 migrations apply tremendous-webhook-gateway --local
@@ -151,14 +127,13 @@ npx wrangler d1 migrations apply tremendous-webhook-gateway --local
 
 ## Security and operational notes
 
-- Signature verification is mandatory and happens before JSON parsing.
-- Do not log raw request bodies or secrets.
+- Signature verification happens before JSON parsing and uses the exact raw request body.
+- Never commit secrets or expose them in frontend code, URLs, logs, or public issues.
 - Restrict D1 and Worker settings access; rotate secrets if exposed.
-- Set upstream only to an HTTPS endpoint you control.
 - HTTP 200 means durably accepted, not that a reward was delivered or redeemed.
 - LINK reward delivery/redemption must not be inferred from webhook receipt.
 - This project does not automate provider dashboard login, customer onboarding, payment collection, reward issuance, or eligibility checks.
-- Follow current Tremendous terms and obtain written approval for the exact business model and recipient markets before operational use.
+- Obtain written approval for the exact business model and recipient markets before operational use.
 
 ## License
 
