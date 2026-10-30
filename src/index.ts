@@ -50,6 +50,34 @@ async function authenticateAdmin(request: Request, env: Env): Promise<boolean> {
   return constantTimeEqual(header.slice(7), expected);
 }
 
+async function readBodyLimited(request: Request, maxBytes: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
 async function receiveWebhook(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
   if (!env.TREMENDOUS_WEBHOOK_SECRET) return json({ error: "WEBHOOK_NOT_CONFIGURED" }, 503);
@@ -58,8 +86,8 @@ async function receiveWebhook(request: Request, env: Env): Promise<Response> {
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
   if (declaredLength > maxBytes) return json({ error: "PAYLOAD_TOO_LARGE" }, 413);
 
-  const rawBody = await request.text();
-  if (encoder.encode(rawBody).byteLength > maxBytes) return json({ error: "PAYLOAD_TOO_LARGE" }, 413);
+  const rawBody = await readBodyLimited(request, maxBytes);
+  if (rawBody === null) return json({ error: "PAYLOAD_TOO_LARGE" }, 413);
   if (!(await verifyTremendousSignature(request, rawBody, env.TREMENDOUS_WEBHOOK_SECRET))) {
     return json({ error: "INVALID_SIGNATURE" }, 401);
   }
@@ -188,8 +216,10 @@ async function processQueue(batch: MessageBatch<QueueMessage>, env: Env): Promis
         continue;
       }
 
+      const upstream = new URL(env.UPSTREAM_URL);
+      if (upstream.protocol !== "https:") throw new Error("UPSTREAM_MUST_USE_HTTPS");
       const signature = await hmacSha256Hex(env.UPSTREAM_SECRET, row.raw_body);
-      const response = await fetch(env.UPSTREAM_URL, {
+      const response = await fetch(upstream.toString(), {
         method: "POST",
         headers: {
           "content-type": "application/json",
