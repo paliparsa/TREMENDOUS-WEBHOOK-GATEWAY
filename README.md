@@ -32,6 +32,7 @@ A separate hostname is a deployment choice, not a way to conceal business activi
 - Admin-only event listing and replay endpoints.
 - Bounded payload size, safe errors, and scheduled 90-day retention cleanup.
 - Cloudflare Workers Builds deploys every push to the connected production branch.
+- Build-time type-checking and test execution before each production deployment.
 
 ## Endpoints
 
@@ -45,25 +46,35 @@ A separate hostname is a deployment choice, not a way to conceal business activi
 
 Admin endpoints require `Authorization: Bearer <GATEWAY_ADMIN_TOKEN>`. The event list never returns raw webhook bodies.
 
-## Minimal first-time setup
+## Cloudflare Workers Builds configuration
 
-### 1. Cloudflare Git integration
+Connect this repository to the Worker named `tremendous-webhook-gateway` and configure the production trigger as follows:
 
-This repository is designed for Cloudflare Workers Builds. Connect the repository to the Worker named `tremendous-webhook-gateway`, use the repository root as the root directory, and use the default deploy command:
+| Cloudflare setting | Value |
+| --- | --- |
+| Git repository | `paliparsa/TREMENDOUS-WEBHOOK-GATEWAY` |
+| Production branch | `main` |
+| Root directory | `/` (repository root) |
+| Build command | `npm run check` |
+| Deploy command | `npm run deploy` |
+| Preview command (optional) | Leave the Cloudflare default, or use `npx wrangler versions upload` for preview versions |
 
-```bash
-npx wrangler deploy
-```
+Cloudflare Workers Builds installs the dependencies from `package.json`. The build command runs:
 
-Cloudflare Workers Builds automatically deploys each push to the connected branch. No GitHub Actions Cloudflare token, Cloudflare account ID variable, D1 setup, Queue setup, or manual Wrangler command is required.
+- `npm run typecheck` — TypeScript validation (`tsc --noEmit`).
+- `npm test` — Vitest test suite.
+
+The deploy command runs the package script `wrangler deploy`. Wrangler bundles `src/index.ts` and deploys the Worker using `wrangler.toml`; this project does not need a separate frontend build or generated output directory.
+
+Every push to `main` triggers validation and, if validation succeeds, deployment. No GitHub Actions Cloudflare token, Cloudflare account ID variable, manually-created D1 database, or Queue is required. Workers Builds manages its own Cloudflare deployment authorization by default.
 
 The `notify.roshava.app` Custom Domain is declared in `wrangler.toml`. On first deployment Wrangler asks Cloudflare to attach it and create the DNS/certificate configuration. The `roshava.app` zone must be active in this same Cloudflare account, and the hostname must not already have a conflicting DNS record or Custom Domain.
 
-### 2. Add the two Worker secrets
+## Runtime secrets
 
-In Cloudflare Dashboard:
+In Cloudflare Dashboard, open:
 
-**Workers & Pages → tremendous-webhook-gateway → Settings → Variables and Secrets → Add**
+**Workers & Pages → tremendous-webhook-gateway → Settings → Variables and Secrets**
 
 Add both values as type **Secret**:
 
@@ -88,9 +99,9 @@ openssl rand -hex 32
 
 Paste the resulting 64-character value as `GATEWAY_ADMIN_TOKEN`. It is not supplied by Tremendous or Cloudflare. Anyone who obtains it can access admin event operations. Keep it private.
 
-After adding the secrets, select **Deploy** if the dashboard asks. The secrets remain attached to the Worker across code deployments.
+After adding or changing runtime secrets, deploy the Worker if Cloudflare prompts you to do so. Secrets remain attached to the Worker across code deployments. Do not put runtime secrets in Workers Builds build variables; use **Settings → Variables and Secrets**.
 
-### 3. Confirm and register the webhook
+## First deployment and webhook registration
 
 After the first successful deployment, open:
 
@@ -143,7 +154,35 @@ TREMENDOUS_WEBHOOK_SECRET=local-test-secret
 GATEWAY_ADMIN_TOKEN=local-admin-token
 ```
 
-Then run `npm install` and `npm run dev`.
+Then run:
+
+```bash
+npm install
+npm run dev
+```
+
+Run the same validation used by Cloudflare before submitting changes:
+
+```bash
+npm run check
+```
+
+## Latest changes
+
+### 2.0.1
+
+- Fixed the npm `ETARGET` installation failure by updating `@cloudflare/workers-types` to the published `^5.20261030.1` release.
+- Closed five superseded Dependabot pull requests after reviewing their proposed dependency updates; unnecessary major upgrades to TypeScript and Vitest were not adopted.
+- Documented the exact Cloudflare Workers Builds validation and deployment commands.
+- Kept the existing TypeScript and Vitest major versions unchanged.
+
+### 2.0.0
+
+- Replaced manually provisioned D1 and Queues with SQLite-backed Durable Object storage and alarm-based retries.
+- Provisioned the Durable Object namespace through Wrangler on first deployment.
+- Declared `notify.roshava.app` as a Wrangler Custom Domain.
+- Aligned deployment with Cloudflare Workers Builds Git integration; removed the separate Cloudflare API-token GitHub deployment path.
+- Reduced initial runtime configuration to two Worker secrets: `TREMENDOUS_WEBHOOK_SECRET` and `GATEWAY_ADMIN_TOKEN`.
 
 ## Security and operational notes
 
