@@ -1,3 +1,5 @@
+import { constantTimeEqual, hmacSha256Hex, verifyHmacSha256 } from "./security";
+
 export interface Env {
   DB: D1Database;
   EVENT_QUEUE: Queue<QueueMessage>;
@@ -33,41 +35,19 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return out === 0;
-}
-
-function toHex(bytes: ArrayBuffer): string {
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function hmacHex(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return toHex(await crypto.subtle.sign("HMAC", key, encoder.encode(body)));
-}
-
 async function verifyTremendousSignature(request: Request, rawBody: string, secret: string): Promise<boolean> {
-  const header = request.headers.get("Tremendous-Webhook-Signature") ?? "";
-  const match = /^sha256=([a-f0-9]{64})$/i.exec(header.trim());
-  if (!match) return false;
-  const expected = await hmacHex(secret, rawBody);
-  return safeEqual(expected.toLowerCase(), match[1].toLowerCase());
+  return verifyHmacSha256(
+    secret,
+    rawBody,
+    request.headers.get("Tremendous-Webhook-Signature") ?? "",
+  );
 }
 
 async function authenticateAdmin(request: Request, env: Env): Promise<boolean> {
   const expected = env.GATEWAY_ADMIN_TOKEN;
   const header = request.headers.get("authorization") ?? "";
   if (!expected || !header.startsWith("Bearer ")) return false;
-  return safeEqual(header.slice(7), expected);
+  return constantTimeEqual(header.slice(7), expected);
 }
 
 async function receiveWebhook(request: Request, env: Env): Promise<Response> {
@@ -208,7 +188,7 @@ async function processQueue(batch: MessageBatch<QueueMessage>, env: Env): Promis
         continue;
       }
 
-      const signature = await hmacHex(env.UPSTREAM_SECRET, row.raw_body);
+      const signature = await hmacSha256Hex(env.UPSTREAM_SECRET, row.raw_body);
       const response = await fetch(env.UPSTREAM_URL, {
         method: "POST",
         headers: {
@@ -236,7 +216,7 @@ async function processQueue(batch: MessageBatch<QueueMessage>, env: Env): Promis
   }
 }
 
-async function scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+async function pruneOldEvents(env: Env): Promise<void> {
   // Keep 90 days of operational metadata and raw payloads; prune only terminal events.
   await env.DB.prepare(
     `DELETE FROM webhook_events
@@ -261,6 +241,6 @@ export default {
     await processQueue(batch, env);
   },
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await scheduled(controller, env);
+    await pruneOldEvents(env);
   },
 };
