@@ -77,11 +77,14 @@ async function callStore(env: Env, path: string, body?: unknown): Promise<Respon
   }));
 }
 
-async function authenticateAdmin(request: Request, env: Env): Promise<boolean> {
+function adminAuthError(request: Request, env: Env): string | null {
   const expected = env.GATEWAY_ADMIN_TOKEN;
+  if (typeof expected !== "string" || expected.length === 0) return "ADMIN_TOKEN_NOT_CONFIGURED";
   const header = request.headers.get("authorization") ?? "";
-  if (!expected || !header.startsWith("Bearer ")) return false;
-  return constantTimeEqual(header.slice(7), expected);
+  const match = /^Bearer\\s+(.+)$/i.exec(header);
+  if (!match) return "MISSING_BEARER_TOKEN";
+  // Trim accidental whitespace from dashboard/Cloudflare secret copy-paste.
+  return constantTimeEqual(match[1].trim(), expected.trim()) ? null : "INVALID_ADMIN_TOKEN";
 }
 
 async function receiveWebhook(request: Request, env: Env): Promise<Response> {
@@ -128,7 +131,8 @@ async function receiveWebhook(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleAdmin(request: Request, env: Env): Promise<Response> {
-  if (!(await authenticateAdmin(request, env))) return json({ error: "UNAUTHORIZED" }, 401);
+  const authError = adminAuthError(request, env);
+  if (authError) return json({ error: authError }, 401);
   const url = new URL(request.url);
 
   if (url.pathname === "/admin/events" && request.method === "GET") {
