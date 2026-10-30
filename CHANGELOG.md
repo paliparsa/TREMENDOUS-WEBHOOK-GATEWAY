@@ -1,11 +1,11 @@
 # Changelog
 
-## 1.0.0 - 2026-10-31
+## 1.1.0
 
-- Initial isolated Cloudflare Worker webhook gateway.
-- Added raw-body HMAC-SHA256 signature verification.
-- Added D1 event persistence and UUID deduplication.
-- Added Cloudflare Queue processing and optional signed upstream forwarding.
-- Added protected event listing and replay endpoints.
-- Added 90-day pruning for terminal event records.
-- Added Wrangler configuration, migration, CI, and deployment workflow.
+- Add one-click GitHub Actions workflow to provision D1 and Queues idempotently, apply migrations, upload Worker secrets, and deploy.
+- Document Cloudflare token permissions, GitHub repository variables/secrets, and secure admin-token generation.
+- Keep custom-domain attachment and Tremendous webhook registration as explicit post-deploy steps.
+
+## 1.0.0
+
+- Initial Cloudflare webhook gateway with HMAC verification, D1 persistence, queue processing, optional signed upstream forwarding, admin event listing/replay, and scheduled retention cleanup.
