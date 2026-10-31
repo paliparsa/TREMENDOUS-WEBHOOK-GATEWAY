@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.4
+- Initialize Durable Object SQLite schema behind `blockConcurrencyWhile()` to prevent requests and alarms from racing first-time storage setup.
+- Correct the admin timeout message to match its 45-second client timeout.
+
 ## 2.0.3
 
 - Set the Wrangler compatibility date to `2026-10-30` because Cloudflare rejected `2026-10-31` as a future date at deployment time.
