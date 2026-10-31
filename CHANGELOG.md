@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.0 - 2026-10-31
+- Add all-time event status metrics and event-type distribution endpoint.
+- Add server-side event search and filtering by status, event type, and resource identifiers.
+- Update the admin dashboard to use all-time metrics rather than counts from only the latest 100 events.
+
+
 ## 2.0.5
 - Document the VisaPrepaidPlatform signed upstream endpoint and shared HMAC secret contract.
 - Clarify order-event correlation and retry/replay behavior for unmatched events.

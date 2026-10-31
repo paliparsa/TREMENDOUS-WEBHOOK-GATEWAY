@@ -151,12 +151,20 @@ async function handleAdmin(request: Request, env: Env): Promise<Response> {
   if (authError) return json({ error: authError }, 401);
   const url = new URL(request.url);
 
+  if (url.pathname === "/admin/summary" && request.method === "GET") {
+    return callStore(env, "/summary");
+  }
+
   if (url.pathname === "/admin/events" && request.method === "GET") {
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "50") || 50));
     const status = url.searchParams.get("status") ?? "";
+    const eventType = (url.searchParams.get("event_type") ?? "").slice(0, 120);
+    const q = (url.searchParams.get("q") ?? "").slice(0, 160);
     const allowed = new Set(["RECEIVED", "PROCESSING", "FORWARDED", "FAILED", "IGNORED"]);
     const query = new URLSearchParams({ limit: String(limit) });
     if (allowed.has(status)) query.set("status", status);
+    if (eventType) query.set("event_type", eventType);
+    if (q) query.set("q", q);
     return callStore(env, `/events?${query.toString()}`);
   }
 
@@ -258,23 +266,43 @@ export class WebhookStore {
       return json({ received: true, duplicate: false });
     }
 
+    if (url.pathname === "/summary" && request.method === "GET") {
+      const totals = this.sql.exec(`
+        SELECT COUNT(*) AS total,
+          SUM(CASE WHEN processing_status='FORWARDED' THEN 1 ELSE 0 END) AS forwarded,
+          SUM(CASE WHEN processing_status='FAILED' THEN 1 ELSE 0 END) AS failed,
+          SUM(CASE WHEN processing_status='IGNORED' THEN 1 ELSE 0 END) AS ignored,
+          SUM(CASE WHEN processing_status IN ('RECEIVED','PROCESSING') THEN 1 ELSE 0 END) AS pending
+        FROM webhook_events
+      `).toArray()[0];
+      const eventTypes = this.sql.exec(`
+        SELECT event_type AS eventType, COUNT(*) AS total
+        FROM webhook_events GROUP BY event_type ORDER BY total DESC LIMIT 15
+      `).toArray();
+      return json({ totals, eventTypes });
+    }
+
     if (url.pathname === "/events" && request.method === "GET") {
       const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "50") || 50));
-      const status = url.searchParams.get("status");
+      const status = url.searchParams.get("status") ?? "";
+      const eventType = (url.searchParams.get("event_type") ?? "").slice(0, 120);
+      const q = (url.searchParams.get("q") ?? "").slice(0, 160);
       const allowed = new Set(["RECEIVED", "PROCESSING", "FORWARDED", "FAILED", "IGNORED"]);
-      const rows = status && allowed.has(status)
-        ? this.sql.exec(
-            `SELECT event_uuid,event_type,resource_type,resource_id,created_utc,received_at,
-                    processing_status,attempt_count,last_error,forwarded_at
-             FROM webhook_events WHERE processing_status = ? ORDER BY received_at DESC LIMIT ?`,
-            status, limit,
-          ).toArray()
-        : this.sql.exec(
-            `SELECT event_uuid,event_type,resource_type,resource_id,created_utc,received_at,
-                    processing_status,attempt_count,last_error,forwarded_at
-             FROM webhook_events ORDER BY received_at DESC LIMIT ?`,
-            limit,
-          ).toArray();
+      const clauses: string[] = [];
+      const binds: (string | number)[] = [];
+      if (allowed.has(status)) { clauses.push("processing_status = ?"); binds.push(status); }
+      if (eventType) { clauses.push("event_type = ?"); binds.push(eventType); }
+      if (q) {
+        clauses.push("(event_uuid LIKE ? OR event_type LIKE ? OR COALESCE(resource_id,'') LIKE ?)");
+        binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      }
+      const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+      const rows = this.sql.exec(
+        `SELECT event_uuid,event_type,resource_type,resource_id,created_utc,received_at,
+                processing_status,attempt_count,last_error,forwarded_at
+         FROM webhook_events ${where} ORDER BY received_at DESC LIMIT ?`,
+        ...binds, limit,
+      ).toArray();
       return json({ events: rows, count: rows.length });
     }
 

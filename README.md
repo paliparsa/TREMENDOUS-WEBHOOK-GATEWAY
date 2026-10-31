@@ -206,3 +206,9 @@ npm run check
 ## License
 
 Private project. All rights reserved.
+
+
+## Event analytics (2.1.0)
+- `GET /admin/summary` returns all-time delivery counts and the most common event types.
+- `GET /admin/events?limit=100&status=FAILED&q=ORDERS` supports server-side status and text filtering.
+- The admin dashboard uses the summary endpoint for all-time counts; event rows remain limited to the latest 100 matching events.
