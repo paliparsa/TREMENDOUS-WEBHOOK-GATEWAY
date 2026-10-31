@@ -119,14 +119,14 @@ Tremendous organizations support one webhook endpoint. Check whether an existing
 
 ## Optional upstream forwarding
 
-Do not configure upstream until the receiving endpoint in your main application has implemented HMAC verification and `Idempotency-Key` deduplication.
+The VisaPrepaidPlatform receiver is `POST https://YOUR_MAIN_APP_HOST/api/internal/webhooks/tremendous`. It verifies the exact raw request body using HMAC-SHA256 and requires `Idempotency-Key` to match the Tremendous webhook UUID. The receiver is implemented on the main Worker and stores provider events before acknowledging them.
 
-Add these as Worker Secrets in Cloudflare only after that endpoint exists:
+Add these as Worker Secrets in Cloudflare after the main application has deployed its receiver and migration:
 
-- `UPSTREAM_URL`: exact HTTPS endpoint controlled by your application.
-- `UPSTREAM_SECRET`: shared HMAC secret used to sign the exact forwarded body.
+- `UPSTREAM_URL`: `https://YOUR_MAIN_APP_HOST/api/internal/webhooks/tremendous` (replace with the actual public origin of VisaPrepaidPlatform).
+- `UPSTREAM_SECRET`: shared HMAC secret of at least 32 characters; it must exactly match `GATEWAY_SHARED_SECRET` on VisaPrepaidPlatform.
 
-If upstream settings are absent, events are durably stored and marked `IGNORED`; they are not forwarded. Once upstream is configured, replay stored events through the admin endpoint.
+If upstream settings are absent, events are durably stored and marked `IGNORED`; they are not forwarded. Once upstream is configured, replay stored events through the admin endpoint. The main application correlates `ORDERS.*` events by Tremendous order ID against an existing issuance record; other event types are retained as ignored and unmatched order IDs are retained for review.
 
 ## Admin operations
 
