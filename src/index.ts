@@ -206,26 +206,33 @@ export class WebhookStore {
   private readonly sql: SqlStorage;
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: Env) {
-    console.info("WebhookStore constructor started");
     this.sql = ctx.storage.sql;
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS webhook_events (
-        event_uuid TEXT PRIMARY KEY,
-        event_type TEXT NOT NULL,
-        resource_type TEXT,
-        resource_id TEXT,
-        created_utc TEXT,
-        received_at TEXT NOT NULL,
-        raw_body TEXT NOT NULL,
-        processing_status TEXT NOT NULL DEFAULT 'RECEIVED'
-          CHECK (processing_status IN ('RECEIVED','PROCESSING','FORWARDED','FAILED','IGNORED')),
-        attempt_count INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT,
-        forwarded_at TEXT
-      )
-    `);
-    this.sql.exec("CREATE INDEX IF NOT EXISTS idx_events_status_received ON webhook_events(processing_status, received_at DESC)");
-    console.info("WebhookStore constructor completed");
+    // Initialize SQLite schema behind the Durable Object input gate.
+    // This prevents fetch/alarm events from racing first-time schema setup.
+    ctx.blockConcurrencyWhile(async () => {
+      try {
+        this.sql.exec(`
+          CREATE TABLE IF NOT EXISTS webhook_events (
+            event_uuid TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            resource_type TEXT,
+            resource_id TEXT,
+            created_utc TEXT,
+            received_at TEXT NOT NULL,
+            raw_body TEXT NOT NULL,
+            processing_status TEXT NOT NULL DEFAULT 'RECEIVED'
+              CHECK (processing_status IN ('RECEIVED','PROCESSING','FORWARDED','FAILED','IGNORED')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            forwarded_at TEXT
+          )
+        `);
+        this.sql.exec("CREATE INDEX IF NOT EXISTS idx_events_status_received ON webhook_events(processing_status, received_at DESC)");
+      } catch (error) {
+        console.error("WebhookStore SQLite initialization failed", error);
+        throw error;
+      }
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
