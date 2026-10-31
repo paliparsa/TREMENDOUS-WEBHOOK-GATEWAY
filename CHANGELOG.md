@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.5
+- Document the VisaPrepaidPlatform signed upstream endpoint and shared HMAC secret contract.
+- Clarify order-event correlation and retry/replay behavior for unmatched events.
+
+
 ## 2.0.4
 - Initialize Durable Object SQLite schema behind `blockConcurrencyWhile()` to prevent requests and alarms from racing first-time storage setup.
 - Correct the admin timeout message to match its 45-second client timeout.
